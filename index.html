@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>BLEU - Conciliador de depósitos BRL</title>
+  <link rel="stylesheet" href="css/material-icons.css">
+  <link rel="stylesheet" href="css/vue-material.min.css">
+  <link rel="stylesheet" href="css/material-default-theme.css">    
+  
+  <script src="js/vue.js"></script>
+  <script src="js/vue-material.min.js"></script>
+  <script src="js/openpgp.min.js"></script> 
+  <script src="js/vue-the-mask.min.js"></script>
+</head>
+
+<body>
+  <div id="app">
+    <md-toolbar class="theme">
+      <img src="assets/logo.svg" alt="" style="width: 100px;">
+      <h3 class="md-title" style="color: white; margin-left: 32px">Conciliador de depósitos BRL</h3>
+    </md-toolbar>
+          
+    <tree-menu></tree-menu>
+  </div>
+
+  <script type="text/x-template" id="download-form">
+    <div id="container" class="md-layout md-gutter md-alignment-center">
+      <div class="md-layout-item md-size-100" style="margin-top: 16px;">
+        <h2>Dados da transação exatamente como aparecem no extrato:</h2>
+      </div>
+  
+      <div class="md-layout-item md-size-50">
+        <md-field>
+          <label>Data do depósito *</label>
+          <md-input v-model="form.timestamp" v-mask="'##/##/####'"></md-input>
+        </md-field>
+      </div>
+
+      <div class="md-layout-item md-size-50">
+        <md-field>
+          <label>Titular</label>
+          <md-input v-model="form.name"></md-input>
+        </md-field>
+      </div>
+
+      <div class="md-layout-item md-size-50">
+        <md-field>
+          <label>CPF / CNPJ do titular</label>
+          <md-input v-model="form.taxId" v-mask="['###.###.###-##', '##.###.###/####-##']"></md-input>
+        </md-field>
+      </div>
+
+      <div class="md-layout-item md-size-50">
+        <md-field>
+          <label>Banco (Cod) da origem</label>
+          <md-input v-model="form.bank"></md-input>
+        </md-field>
+      </div>
+  
+      <div class="md-layout-item md-size-50">
+        <md-autocomplete v-model="form.type" :md-options="optionsType">
+          <label>Tipo de depósito *</label>
+        </md-autocomplete>
+      </div>
+  
+      <div class="md-layout-item md-size-50">
+        <md-field>
+          <label>Agência e Dígito da origem</label>
+          <md-input v-model="form.agency"></md-input>
+        </md-field>
+      </div>
+  
+      <div class="md-layout-item md-size-50">
+        <md-field>
+          <label>Conta e Dígito da origem</label>
+          <md-input v-model="form.account" v-mask="maskAccount(10)"></md-input>
+        </md-field>
+      </div>
+  
+      <div class="md-layout-item md-size-50">
+        <md-field>
+          <label>Valor (R$) *</label>
+          <md-input v-model="form.amount" v-mask="maskAmount(20)"></md-input>
+        </md-field>
+      </div>
+    
+      <div class="md-layout-item md-size-100">
+        <md-button class="md-raised" style="margin-bottom: 16px; float: right;" @click="add"
+        :class="{theme: !(!form.amount || form.amount == 0 || !form.timestamp || !form.type)}" 
+        :disabled="!form.amount || form.amount == 0 || !form.timestamp || !form.type">
+          Incluir
+        </md-button>
+      </div>
+          
+      <md-table md-card class="md-layout-item md-size-100" style="margin-bottom: 32px">
+        <md-table-row>
+          <md-table-head>Data</md-table-head>
+          <md-table-head>Titular</md-table-head>
+          <md-table-head>CPF/CNPJ</md-table-head>
+          <md-table-head>Banco</md-table-head>
+          <md-table-head>Tipo</md-table-head>
+          <md-table-head>Agência</md-table-head>
+          <md-table-head>Conta</md-table-head>
+          <md-table-head>Valor (R$)</md-table-head>
+          <md-table-head></md-table-head>
+        </md-table-row>
+
+        <md-table-row v-if="!transactions || transactions.length <= 0">
+          <md-table-cell></md-table-cell>
+          <md-table-cell></md-table-cell>
+          <md-table-cell></md-table-cell>
+          <md-table-cell></md-table-cell>
+          <md-table-cell>Sem conteúdo</md-table-cell>
+          <md-table-cell></md-table-cell>
+          <md-table-cell></md-table-cell>
+          <md-table-cell></md-table-cell>
+          <md-table-cell></md-table-cell>
+        </md-table-row>
+
+        <md-table-row v-for="(item, index) in transactions" :key="index">
+          <md-table-cell>{{item.timestamp}}</md-table-cell>
+          <md-table-cell>
+            {{item.name.split(' ')[0]}}
+          </md-table-cell>
+          <md-table-cell>{{item.taxId}}</md-table-cell>
+          <md-table-cell>{{item.bank}}</md-table-cell>
+          <md-table-cell>{{item.type}}</md-table-cell>
+          <md-table-cell>{{item.agency}}</md-table-cell>
+          <md-table-cell>{{item.account}}</md-table-cell>
+          <md-table-cell>{{item.amount}}</md-table-cell>
+          <md-table-cell>
+            <md-button class="md-accent" @click="remove(index)">Remover</md-button>
+          </md-table-cell>
+        </md-table-row>
+      </md-table>  
+          
+      <div class="md-layout-item md-size-50">
+        <md-field>
+          <label>Chave privada</label>
+          <md-file @md-change="onFileUpload($event)"/>
+        </md-field>
+      </div>
+
+      <div class="md-layout-item md-size-50">
+      <md-field>
+        <label>Senha</label>
+        <md-input type="password" v-model="passphrase"></md-input>
+      </md-field>
+      </div>
+
+      <div class="md-layout-item md-size-100">
+        <md-button class="md-raised"
+          :class="{theme: (transactions.length > 0 && privateKey.length > 0 && passphrase.length > 0)}"
+          :disabled="!(transactions.length > 0 && privateKey.length > 0 && passphrase.length > 0)"
+          style="float: right"
+          @click="download">
+          Download
+        </md-button>
+      </div>
+
+      <md-snackbar md-position="center" :md-duration="5000" :md-active.sync="showSnackbar" md-persistent>
+        <span>Ocorreu um erro no download, verifique sua chave privada e sua senha.</span>
+      </md-snackbar>
+    </div>
+  </script>
+            
+  <style lang="scss" scoped>
+  #app {        
+    min-height: 100vh;
+    background-color: #EEE;
+  }
+
+  #container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 32px 16px 16px;
+    background-color: white;
+  }
+
+  .theme {
+    background-color: #138FE8 !important;
+    color: white !important;
+  }
+  </style>
+          
+  <script>
+  Vue.component('tree-menu', {
+    name: 'DownloadForm',
+    template: "#download-form",
+    props: {
+      msg: String
+    },
+    data()  {
+      return {      
+        form: {     
+            timestamp:"",
+            origin:"",
+            name:"",
+            type: null,
+            agency:"",
+            account:"",
+            taxId:"",
+            bank:"",
+            amount:"",
+            confirmations:0,
+        },
+        optionsType: [
+            'TEF','TED','DOC',
+        ],
+        privateKey: "",
+        passphrase: "",
+        transactions: [],
+        showSnackbar: false,
+      }
+    },
+    methods: {
+      add () {
+      this.transactions.push(this.form)
+      this.form = {     
+          timestamp:"",
+          origin:"",
+          name:"",
+          type:"",
+          agency:"",
+          account:"",
+          taxId:"",
+          bank:"",
+          amount:"",
+          confirmations:0,
+          }
+      },
+      remove (i) {
+        this.transactions.splice(i, 1)
+      },
+      forceBrowserDownload(data, filename, type) {
+        let file = new Blob([data], {type: type});
+        
+        if (window.navigator.msSaveOrOpenBlob) // IE10+
+          window.navigator.msSaveOrOpenBlob(file, filename);
+        else { // Others
+          let a = document.createElement("a"),
+          url = URL.createObjectURL(file);
+          
+          a.href = url;
+          a.download = filename;
+          
+          document.body.appendChild(a);
+          
+          a.click();
+          
+          setTimeout(function() {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);  
+          }, 0); 
+        }
+      },
+      async download() {   
+        try {
+          let options, cleartext;
+
+          let privKeyObj = (await openpgp.key.readArmored(this.privateKey)).keys[0];
+          await privKeyObj.decrypt(this.passphrase);
+
+          options = {
+            message: openpgp.cleartext.fromText(JSON.stringify({ transactions: this.transactions })),
+            privateKeys: [privKeyObj]
+          };
+
+          openpgp.sign(options).then((signed) => {
+            cleartext = signed.data;
+            this.forceBrowserDownload(cleartext, 'file', 'txt');
+          });
+        } catch (error) {
+          this.showSnackbar = true
+        }
+      },
+      onFileUpload (evt) {
+        let reader = new FileReader();
+        reader.onload = () => {
+          this.privateKey = reader.result;
+        };
+        reader.readAsText(evt[0]);
+      },
+      maskAccount(max) {
+        let array = ["###-#"]
+        for (let index = 1; index < max; index++) {
+          array.push('#' + array[index-1])
+        }
+        return array
+      },
+      maskAmount(max) {
+        let array = ["#.##"]
+        for (let index = 1; index < max; index++) {
+          array.push('#' + array[index-1])
+        }
+        return array
+      }
+    }
+  });
+  Vue.use(VueMaterial.default)
+  Vue.use(VueTheMask)
+
+  new Vue({
+  el: '#app',
+      data: {            
+      }
+  })
+  </script>
+</body>
+</html>
